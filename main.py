@@ -49,9 +49,9 @@ def gpt_reply(characters, goals, scene_text, user_input):
             max_tokens=200
         )
         return response.choices[0].message["content"].strip()
-    except Exception as e:
-        print("GPT ERROR:", e)
-        return "Ошибка GPT: не удалось получить ответ."
+ except Exception as e:
+    print("GPT ERROR:", e)  # <<< добавь это обязательно
+    return f"Ошибка GPT: {str(e)}"
 
 
 
