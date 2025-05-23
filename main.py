@@ -19,9 +19,6 @@ app = Flask(__name__)
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dispatcher = Dispatcher(bot, None, use_context=True)
 
-dispatcher.add_handler(CommandHandler("start", start))
-dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
-
 # Состояния пользователей
 user_states = {}  # user_id -> scene_id
 
@@ -93,7 +90,8 @@ def webhook():
     update = Update.de_json(request.get_json(force=True), bot)
     dispatcher.process_update(update)
     return "ok"
-
+dispatcher.add_handler(CommandHandler("start", start))
+dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
 # Запуск на Render
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
