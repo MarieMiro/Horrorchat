@@ -49,12 +49,10 @@ def gpt_reply(characters, goals, scene_text, user_input):
             max_tokens=200
         )
         return response.choices[0].message["content"].strip()
- except Exception as e:
-    print("GPT ERROR:", e)  # <<< добавь это обязательно
-    return f"Ошибка GPT: {str(e)}"
-
-
-
+    except Exception as e:
+        print("GPT ERROR:", e)
+        return f"Ошибка GPT: {str(e)}"
+        
 def start(update, context):
     user_id = update.message.chat_id
     user_states[user_id] = "ep1_intro"
