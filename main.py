@@ -20,7 +20,6 @@ user_states = {}
 
 def get_scene(user_id):
     return user_states.get(user_id, "ep1_intro")
-
 def gpt_reply(characters, goals, scene_text, user_input):
     characters_list = ", ".join(characters)
     goals_text = "\n".join([f"{char}: {goal}" for char, goal in goals.items()])
@@ -31,20 +30,26 @@ def gpt_reply(characters, goals, scene_text, user_input):
 Сцена: "{scene_text}"
 Пользователь (Алекс) пишет: "{user_input}"
 
-Вот цели персонажей:
+Цели:
 {goals_text}
 
-Ответь от имени подходящего персонажа, как будто вы общаетесь в мессенджере.
-Формат: Имя: сообщение
+Ответь от имени одного из персонажей в формате:
+Имя: сообщение
 """
 
-    response = openai.Completion.create(
-        model="text-davinci-003",
-        prompt=prompt,
-        max_tokens=200,
-        temperature=0.8
-    )
-    return response.choices[0].text.strip()
+    try:
+        response = openai.Completion.create(
+            model="text-davinci-003",
+            prompt=prompt,
+            max_tokens=200,
+            temperature=0.8
+        )
+        return response.choices[0].text.strip()
+    except Exception as e:
+        print("GPT ERROR:", e)
+        return "Ошибка GPT"
+
+
 
 def start(update, context):
     user_id = update.message.chat_id
@@ -59,7 +64,11 @@ def handle_message(update, context):
     scene = story.get(scene_id)
 
     if not scene:
-        update.message.reply_text("Произошла ошибка.")
+        update.message.reply_text(f"[DEBUG] scene: {scene_id}")
+update.message.reply_text(f"[DEBUG] characters: {characters}")
+update.message.reply_text(f"[DEBUG] goals: {goals}")
+
+
         return
 
     characters = scene.get("characters", [])
