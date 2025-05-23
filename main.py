@@ -25,33 +25,35 @@ def get_scene(user_id):
     return user_states.get(user_id, "ep1_intro")
 
 def gpt_reply(characters, goals, scene_text, user_input):
-    characters_list = ", ".join(characters)
     goals_text = "\n".join([f"{char}: {goal}" for char, goal in goals.items()])
+    system_prompt = f"""
+Ты — один из персонажей интерактивной хоррор-истории. Алекс — главная героиня. Пользователь управляет её действиями.
 
-    prompt = f"""
-Ты — один из персонажей интерактивной хоррор-истории. Алекс — главная героиня, пользователь управляет её действиями.
+Сцена: {scene_text}
 
-Сцена: "{scene_text}"
-Пользователь (Алекс) пишет: "{user_input}"
-
-Цели персонажей:
+Вот цели персонажей:
 {goals_text}
 
-Ответь от имени одного из персонажей. Формат:
+Ты должен ответить от имени одного из персонажей, в формате:
 Имя: сообщение
 """
 
     try:
-        response = openai.Completion.create(
-            model="text-davinci-003",
-            prompt=prompt,
-            max_tokens=200,
-            temperature=0.8
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_input}
+            ],
+            temperature=0.8,
+            max_tokens=200
         )
-        return response.choices[0].text.strip()
+        return response.choices[0].message["content"].strip()
     except Exception as e:
         print("GPT ERROR:", e)
         return "Ошибка GPT: не удалось получить ответ."
+
+
 
 def start(update, context):
     user_id = update.message.chat_id
