@@ -24,18 +24,18 @@ user_states = {}
 def get_scene(user_id):
     return user_states.get(user_id, "ep1_intro")
 
-def gpt_reply(characters, goals, scene_text, user_input):
+def gpt_reply(characters, goals, text, user_input):
     characters_list = ", ".join(characters)
-    goals_text = "\n".join([f"{char}: {goal}" for char, goal in goals.items()])
+    goals = "\n".join([f"{char}: {goals}" for char, goals in goals.items()])
 
     prompt = f"""
 Ты — один из персонажей интерактивной хоррор-истории. Алекс — главная героиня, пользователь управляет её действиями.
 
-Сцена: "{scene_text}"
+Сцена: "{text}"
 Пользователь (Алекс) пишет: "{user_input}"
 
 Цели персонажей:
-{goals_text}
+{goals}
 
 Ответь от имени одного из персонажей. Формат:
 Имя: сообщение
