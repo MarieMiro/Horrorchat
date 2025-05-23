@@ -1,4 +1,4 @@
-openai
 python-telegram-bot==13.15
 Flask
 python-dotenv
+openai
