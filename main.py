@@ -19,6 +19,9 @@ app = Flask(__name__)
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dispatcher = Dispatcher(bot, None, use_context=True)
 
+dispatcher.add_handler(CommandHandler("start", start))
+dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
+
 # Состояния пользователей
 user_states = {}  # user_id -> scene_id
 
