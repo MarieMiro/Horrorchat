@@ -45,7 +45,7 @@ def gpt_reply(characters, goals, scene_text, user_input):
         response = openai.Completion.create(
             model="text-davinci-003",
             prompt=prompt,
-            max_tokens=200,
+            max_tokens=100,
             temperature=0.8
         )
         return response.choices[0].text.strip()
