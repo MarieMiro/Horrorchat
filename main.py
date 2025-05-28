@@ -28,21 +28,22 @@ def get_scene(user_id):
 # GPT-ответ от персонажа
 def gpt_reply(characters, goals, scene_text, user_input):
     goals_text = "\n".join([f"{char}: {goal}" for char, goal in goals.items()])
-   system_prompt = f"""
-Ты — один из персонажей интерактивной хоррор-истории. Алекс — главная героиня, с которой вы сейчас переписываетесь в мессенджере.
+    system_prompt = f"""
+Ты — один из персонажей интерактивной хоррор-истории. Алекс — главная героиня, пользователь играет за неё и пишет от её имени.
 
-Ты не объясняешь цели — ты их придерживаешься в поведении и стиле речи. Пиши естественно, по-человечески: коротко, реалистично, с характером. Ты должен будто создавать диалог среди персонажей, вести по сюжеты, как в сериале. Будь в роли.
+Ты должен отвечать от имени других персонажей, как в живом мессенджере. Отвечай очень коротко и естественно, как в реальной переписке. Не описывай действия. Просто пиши, что бы мог сказать этот персонаж.
 
-Сейчас сцена:
+Контекст сцены:
 {scene_text}
 
-Вот цели и характеры персонажей:
+Цели персонажей:
 {goals_text}
+Ответь в формате 2–3 коротких реплик от других персонажей. Каждая реплика должна начинаться с имени говорящего, например:
+Имя: фраза
+Пример:
+Итан: Ты в порядке?
+Не добавляй описаний, действий или комментариев. Только реплики в формате диалога. Не отвечай от лица Алекс.
 
-На сообщение пользователя ответь от имени одного логичного персонажа. Формат ответа:
-Имя: сообщение
-
-Не объясняй, кто ты и что происходит. Просто реагируй, как будто живой человек отвечает в чате.
 """
 
     try:
@@ -53,13 +54,12 @@ def gpt_reply(characters, goals, scene_text, user_input):
                 {"role": "user", "content": user_input}
             ],
             temperature=0.8,
-            max_tokens=100
+            max_tokens=300
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
         print("GPT ERROR:", e)
         return f"Ошибка GPT: {str(e)}"
-
 # Команда /start
 def start(update, context):
     user_id = update.message.chat_id
@@ -81,13 +81,13 @@ def handle_message(update, context):
     characters = scene.get("characters", [])
     goals = scene.get("goals", {})
 
-    # Отладка
-    update.message.reply_text(f"[DEBUG] Сцена: {scene_id}")
-    update.message.reply_text(f"[DEBUG] Персонажи: {characters}")
-    update.message.reply_text(f"[DEBUG] Цели: {list(goals.keys())}")
-
     reply = gpt_reply(characters, goals, scene["text"], user_input)
-    update.message.reply_text(reply)
+
+    # Отправляем каждую строку отдельно (имитация диалога)
+    for line in reply.split('\n'):
+        line = line.strip()
+        if line:
+            update.message.reply_text(line)
 
 # Telegram webhook
 @app.route("/webhook", methods=["POST"])
