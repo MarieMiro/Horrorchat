@@ -19,13 +19,18 @@ app = Flask(__name__)
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dispatcher = Dispatcher(bot, None, use_context=True)
 
-# Состояния пользователей
-user_states = {}  # user_id -> scene_id
+# Состояния пользователей: user_id → {"scene": ..., "step": ...}
+user_states = {}
 
-def get_scene(user_id):
-    return user_states.get(user_id, "ep1_intro")
+def get_user_state(user_id):
+    return user_states.get(user_id, {"scene": "ep1_intro", "step": 0})
 
-# GPT-ответ от персонажа
+def update_user_step(user_id):
+    state = get_user_state(user_id)
+    state["step"] += 1
+    user_states[user_id] = state
+
+# GPT-ответ от персонажей
 def gpt_reply(characters, goals, scene_text, user_input):
     goals_text = "\n".join([f"{char}: {goal}" for char, goal in goals.items()])
     system_prompt = f"""
@@ -38,12 +43,11 @@ def gpt_reply(characters, goals, scene_text, user_input):
 
 Цели персонажей:
 {goals_text}
+
 Ответь в формате 2–3 коротких реплик от других персонажей. Каждая реплика должна начинаться с имени говорящего, например:
 Имя: фраза
-Пример:
-Итан: Ты в порядке?
-Не добавляй описаний, действий или комментариев. Только реплики в формате диалога. Не отвечай от лица Алекс.
 
+Не добавляй описаний, действий или комментариев. Только реплики в формате диалога. Не отвечай от лица Алекс.
 """
 
     try:
@@ -60,28 +64,35 @@ def gpt_reply(characters, goals, scene_text, user_input):
     except Exception as e:
         print("GPT ERROR:", e)
         return f"Ошибка GPT: {str(e)}"
+
 # Команда /start
 def start(update, context):
     user_id = update.message.chat_id
-    user_states[user_id] = "ep1_intro"
+    user_states[user_id] = {"scene": "ep1_intro", "step": 0}
     scene = story["ep1_intro"]
-    update.message.reply_text(scene["text"])
+    intro_text = scene["steps"][0].get("text", "Начинаем...")
+    update.message.reply_text(intro_text)
 
 # Обработка сообщений
 def handle_message(update, context):
     user_id = update.message.chat_id
     user_input = update.message.text.strip()
-    scene_id = get_scene(user_id)
+
+    state = get_user_state(user_id)
+    scene_id = state["scene"]
+    step_index = state["step"]
     scene = story.get(scene_id)
 
-    if not scene:
-        update.message.reply_text("Произошла ошибка.")
+    if not scene or step_index >= len(scene["steps"]):
+        update.message.reply_text("История завершена или произошла ошибка.")
         return
 
-    characters = scene.get("characters", [])
+    step = scene["steps"][step_index]
+    scene_text = step.get("text", "")
+    characters = step.get("characters", [])
     goals = scene.get("goals", {})
 
-    reply = gpt_reply(characters, goals, scene["text"], user_input)
+    reply = gpt_reply(characters, goals, scene_text, user_input)
 
     # Отправляем каждую строку отдельно (имитация диалога)
     for line in reply.split('\n'):
@@ -89,14 +100,21 @@ def handle_message(update, context):
         if line:
             update.message.reply_text(line)
 
-# Telegram webhook
+    # Переход к следующему шагу
+    update_user_step(user_id)
+
+# Webhook Telegram
 @app.route("/webhook", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot)
     dispatcher.process_update(update)
     return "ok"
+
+# Обработчики команд
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
+
 # Запуск на Render
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
+
