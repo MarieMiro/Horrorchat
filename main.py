@@ -66,10 +66,10 @@ def send_step_messages(user_id, chat_id):
 
     if text:
         bot.send_message(chat_id=chat_id, text=text)
-        time.sleep(5)
+        time.sleep(10)
 
     for line in characters:
-        time.sleep(5)
+        time.sleep(10)
         bot.send_message(chat_id=chat_id, text=f'{line["name"]}: {line["line"]}')
 
     user_state["step"] += 1
