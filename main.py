@@ -1,12 +1,12 @@
 import os
 import time
 import threading
+import json
 from flask import Flask, request
 from dotenv import load_dotenv
 from telegram import Bot, Update
 from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters
 from openai import OpenAI
-from story import story
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -19,13 +19,17 @@ app = Flask(__name__)
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dispatcher = Dispatcher(bot, None, use_context=True)
 
-# Состояния пользователей
-user_states = {}  # user_id -> {"scene": "ep1_intro", "step": 0}
-user_locks = {}  # user_id -> threading.Lock
+# Загрузка сценария из JSON
+with open("story.json", "r", encoding="utf-8") as f:
+    story = json.load(f)
 
+# Состояния пользователей
+user_states = {}   # user_id -> {"scene": ..., "step": ...}
+user_locks = {}    # user_id -> threading.Lock
 
 def get_user_state(user_id):
-    user_locks.setdefault(user_id, threading.Lock())
+    if user_id not in user_locks:
+        user_locks[user_id] = threading.Lock()
     return user_states.setdefault(user_id, {"scene": "ep1_intro", "step": 0})
 
 def collect_context(scene, current_step):
@@ -36,21 +40,23 @@ def collect_context(scene, current_step):
             context_lines.append(f'{line["name"]}: {line["line"]}')
     return "\n".join(context_lines)
 
-def gpt_reply(scene, current_step, user_input):
-    step = scene["steps"][current_step]
-    step_characters = step.get("characters", [])
-    character_names = [c["name"] for c in step_characters]
-    context_text = collect_context(scene, current_step)
+def gpt_reply(scene, step_index, user_input):
+    step = scene["steps"][step_index]
+    characters = step.get("characters", [])
+    character_names = [c["name"] for c in characters]
+    context = collect_context(scene, step_index)
 
     prompt = f"""
 Ты — один из следующих персонажей: {', '.join(character_names)}.
-Персонажей интерактивной хоррор-истории. Алекс — главная героиня, пользователь играет за неё и пишет от её имени.
-Ты должен отвечать от имени других персонажей, как в живом мессенджере. Отвечай очень коротко и естественно, как в реальной переписке. Не описывай действия. Просто пиши, что бы мог сказать этот персонаж.
+Алекс — главная героиня, пользователь играет за неё и пишет от её имени.
+Ответь очень коротко и естественно, как в реальной переписке. Отвечай только от одного из доступных персонажей (не от Алекс)
 
 Контекст истории:
-{context_text}
+{context}
 
-Не добавляй описаний, действий или комментариев. Только реплики в формате диалога. Не отвечай от лица Алекс. Пример:
+Ответь очень коротко и естественно от имени одного из этих персонажей. Не описывай действия. Не добавляй ничего лишнего. Только короткая реплика в живом стиле.Не описывай действия, не отвечай от имени Алекс.
+
+Пример:
 Имя: реплика
 """
 
@@ -67,63 +73,62 @@ def gpt_reply(scene, current_step, user_input):
         return response.choices[0].message.content.strip()
     except Exception as e:
         return f"Ошибка GPT: {str(e)}"
+
 def send_step_messages(user_id, chat_id):
-    user_state = get_user_state(user_id)
-    scene = story[user_state["scene"]]
-    step_index = user_state["step"]
+    state = get_user_state(user_id)
+    scene = story[state["scene"]]
+    steps = scene["steps"]
+    step_index = state["step"]
 
-    if step_index >= len(scene["steps"]):
-        return
+    if step_index >= len(steps):
+        return  # Сценарий завершён
 
-    step = scene["steps"][step_index]
+    step = steps[step_index]
 
     if "text" in step:
         bot.send_message(chat_id=chat_id, text=step["text"])
         time.sleep(10)
 
-    for line in step.get("characters", []):
-        bot.send_message(chat_id=chat_id, text=f'{line["name"]}: {line["line"]}')
+    for character in step.get("characters", []):
+        bot.send_message(chat_id=chat_id, text=f'{character["name"]}: {character["line"]}')
         time.sleep(10)
 
-    user_state["step"] += 1  # <- обязательно увеличивать только здесь
-    
+    state["step"] += 1
+
 def continue_story(chat_id, user_id):
     def run():
-        # Создаём замок, если ещё нет
-        if user_id not in user_locks:
-            user_locks[user_id] = threading.Lock()
-
         with user_locks[user_id]:
             send_step_messages(user_id, chat_id)
-
     threading.Thread(target=run).start()
 
 def start(update, context):
     user_id = update.message.chat_id
     user_states[user_id] = {"scene": "ep1_intro", "step": 0}
-    continue_story(update.message.chat_id, user_id)
+    continue_story(user_id=user_id, chat_id=update.message.chat_id)
 
 def handle_message(update, context):
     user_id = update.message.chat_id
     user_input = update.message.text.strip()
-    user_state = get_user_state(user_id)
-    scene = story[user_state["scene"]]
-    step_index = user_state["step"]
+    state = get_user_state(user_id)
+    scene = story[state["scene"]]
+    step_index = state["step"]
 
     if step_index < len(scene["steps"]):
         reply = gpt_reply(scene, step_index, user_input)
         update.message.reply_text(reply)
 
-    continue_story(update.message.chat_id, user_id)
-    
+    continue_story(user_id=user_id, chat_id=update.message.chat_id)
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot)
     dispatcher.process_update(update)
     return "ok"
 
+# Регистрация хендлеров
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
 
+# Запуск Flask-сервера
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
