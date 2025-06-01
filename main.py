@@ -21,8 +21,11 @@ dispatcher = Dispatcher(bot, None, use_context=True)
 
 # Состояния пользователей
 user_states = {}  # user_id -> {"scene": "ep1_intro", "step": 0}
+user_locks = {}  # user_id -> threading.Lock
+
 
 def get_user_state(user_id):
+    user_locks.setdefault(user_id, threading.Lock())
     return user_states.setdefault(user_id, {"scene": "ep1_intro", "step": 0})
 
 def collect_context(scene, current_step):
@@ -64,17 +67,16 @@ def gpt_reply(scene, current_step, user_input):
         return response.choices[0].message.content.strip()
     except Exception as e:
         return f"Ошибка GPT: {str(e)}"
-
 def send_step_messages(user_id, chat_id):
     user_state = get_user_state(user_id)
     scene = story[user_state["scene"]]
     step_index = user_state["step"]
-    steps = scene["steps"]
 
-    if step_index >= len(steps):
+    if step_index >= len(scene["steps"]):
         return
 
-    step = steps[step_index]
+    step = scene["steps"][step_index]
+
     if "text" in step:
         bot.send_message(chat_id=chat_id, text=step["text"])
         time.sleep(10)
@@ -83,10 +85,13 @@ def send_step_messages(user_id, chat_id):
         bot.send_message(chat_id=chat_id, text=f'{line["name"]}: {line["line"]}')
         time.sleep(10)
 
-    user_state["step"] += 1
-
+    user_state["step"] += 1  # <- обязательно увеличивать только здесь
+    
 def continue_story(chat_id, user_id):
-    threading.Thread(target=send_step_messages, args=(user_id, chat_id)).start()
+    def run():
+        with user_locks[user_id]:
+            send_step_messages(user_id, chat_id)
+    threading.Thread(target=run).start()
 
 def start(update, context):
     user_id = update.message.chat_id
