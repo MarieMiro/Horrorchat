@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from telegram import Bot, Update
 from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters
 from openai import OpenAI
-
+from story import story
 # Загрузка переменных окружения
 load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -19,9 +19,6 @@ app = Flask(__name__)
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dispatcher = Dispatcher(bot, None, use_context=True)
 
-# Загрузка сценария из JSON
-with open("story.json", "r", encoding="utf-8") as f:
-    story = json.load(f)
 
 # Состояния пользователей
 user_states = {}   # user_id -> {"scene": ..., "step": ...}
