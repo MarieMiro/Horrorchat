@@ -8,31 +8,48 @@ from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters
 from openai import OpenAI
 from story import story
 
+# Загрузка переменных окружения
 load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
+# Инициализация клиентов
 client = OpenAI(api_key=OPENAI_API_KEY)
 app = Flask(__name__)
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dispatcher = Dispatcher(bot, None, use_context=True)
 
-# user_id -> {"scene": ..., "step": ..., "line": ..., "waiting": False}
-user_states = {}
+# Состояния пользователей
+user_states = {}  # user_id -> {"scene": "ep1_intro", "step": 0}
 
 def get_user_state(user_id):
-    return user_states.setdefault(user_id, {"scene": "ep1_intro", "step": 0, "line": 0, "waiting": False})
+    return user_states.setdefault(user_id, {"scene": "ep1_intro", "step": 0})
 
-def gpt_reply(user_input, characters):
-    names = ', '.join([c['name'] for c in characters])
+def collect_context(scene, current_step):
+    context_lines = []
+    for i in range(current_step):
+        step = scene["steps"][i]
+        for line in step.get("characters", []):
+            context_lines.append(f'{line["name"]}: {line["line"]}')
+    return "\n".join(context_lines)
+
+def gpt_reply(scene, current_step, user_input):
+    step = scene["steps"][current_step]
+    step_characters = step.get("characters", [])
+    character_names = [c["name"] for c in step_characters]
+    context_text = collect_context(scene, current_step)
+
     prompt = f"""
-Ты — один из персонажей: {names}.
-Пользователь играет за героиню Алекс.
+Ты — один из следующих персонажей: {', '.join(character_names)}.
+Алекс — главная героиня, пользователь пишет от её имени.
 
-Отвечай только от имени одного из доступных персонажей, коротко и по-человечески.
-Не описывай действия, не добавляй ничего лишнего. Только реплика в виде:
-Имя: фраза
+Контекст истории:
+{context_text}
+
+Ответь очень коротко и естественно, от лица одного из этих персонажей. Не описывай действия. Пример:
+Имя: реплика
 """
+
     try:
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -47,58 +64,46 @@ def gpt_reply(user_input, characters):
     except Exception as e:
         return f"Ошибка GPT: {str(e)}"
 
-def send_story(user_id, chat_id):
+def send_step_messages(user_id, chat_id):
     user_state = get_user_state(user_id)
     scene = story[user_state["scene"]]
+    step_index = user_state["step"]
     steps = scene["steps"]
 
-    while user_state["step"] < len(steps):
-        step = steps[user_state["step"]]
-        characters = step.get("characters", [])
-        text = step.get("text", "")
-        line_index = user_state["line"]
+    if step_index >= len(steps):
+        return
 
-        if text and line_index == 0:
-            bot.send_message(chat_id=chat_id, text=text)
-            time.sleep(10)
+    step = steps[step_index]
+    if "text" in step:
+        bot.send_message(chat_id=chat_id, text=step["text"])
+        time.sleep(10)
 
-        while line_index < len(characters):
-            msg = characters[line_index]
-            bot.send_message(chat_id=chat_id, text=f'{msg["name"]}: {msg["line"]}')
-            line_index += 1
-            user_state["line"] = line_index
-            time.sleep(10)
+    for line in step.get("characters", []):
+        bot.send_message(chat_id=chat_id, text=f'{line["name"]}: {line["line"]}')
+        time.sleep(10)
 
-        user_state["step"] += 1
-        user_state["line"] = 0
+    user_state["step"] += 1
 
-def continue_story(user_id, chat_id):
-    if not user_states[user_id]["waiting"]:
-        user_states[user_id]["waiting"] = True
-
-        def run():
-            send_story(user_id, chat_id)
-            user_states[user_id]["waiting"] = False
-
-        threading.Thread(target=run).start()
+def continue_story(chat_id, user_id):
+    threading.Thread(target=send_step_messages, args=(user_id, chat_id)).start()
 
 def start(update, context):
     user_id = update.message.chat_id
-    user_states[user_id] = {"scene": "ep1_intro", "step": 0, "line": 0, "waiting": False}
-    update.message.reply_text("Вы едете по дороге к базе отдыха. Вдруг слышите какой-то звук от машины и останавливаетесь, вы оказываетесь у странного городка Эвансон.")
-    continue_story(user_id, update.message.chat_id)
+    user_states[user_id] = {"scene": "ep1_intro", "step": 0}
+    continue_story(update.message.chat_id, user_id)
 
 def handle_message(update, context):
     user_id = update.message.chat_id
     user_input = update.message.text.strip()
-    state = get_user_state(user_id)
+    user_state = get_user_state(user_id)
+    scene = story[user_state["scene"]]
+    step_index = user_state["step"]
 
-    current_step = story[state["scene"]]["steps"][state["step"]]
-    characters = current_step.get("characters", [])
-    reply = gpt_reply(user_input, characters)
+    if step_index < len(scene["steps"]):
+        reply = gpt_reply(scene, step_index, user_input)
+        update.message.reply_text(reply)
 
-    update.message.reply_text(reply)
-    continue_story(user_id, update.message.chat_id)
+    continue_story(update.message.chat_id, user_id)
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -111,4 +116,3 @@ dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_me
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
-
