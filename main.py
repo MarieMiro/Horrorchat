@@ -89,8 +89,13 @@ def send_step_messages(user_id, chat_id):
     
 def continue_story(chat_id, user_id):
     def run():
+        # Создаём замок, если ещё нет
+        if user_id not in user_locks:
+            user_locks[user_id] = threading.Lock()
+
         with user_locks[user_id]:
             send_step_messages(user_id, chat_id)
+
     threading.Thread(target=run).start()
 
 def start(update, context):
@@ -110,7 +115,7 @@ def handle_message(update, context):
         update.message.reply_text(reply)
 
     continue_story(update.message.chat_id, user_id)
-
+    
 @app.route("/webhook", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot)
