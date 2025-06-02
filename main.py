@@ -94,8 +94,12 @@ def send_step_messages(user_id, chat_id):
 
 def continue_story(chat_id, user_id):
     def run():
+        if user_id not in user_locks:
+            user_locks[user_id] = threading.Lock()  # ⬅️ гарантируем наличие замка
+
         with user_locks[user_id]:
             send_step_messages(user_id, chat_id)
+
     threading.Thread(target=run).start()
 
 def start(update, context):
@@ -112,7 +116,7 @@ def handle_message(update, context):
 
     if step_index < len(scene["steps"]):
         reply = gpt_reply(scene, step_index, user_input)
-        update.message.reply_text(reply)
+   update.message.reply_text(reply)
 
     continue_story(user_id=user_id, chat_id=update.message.chat_id)
 
