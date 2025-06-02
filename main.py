@@ -101,7 +101,7 @@ def continue_story(chat_id, user_id):
 def start(update, context):
     user_id = update.message.chat_id
     user_states[user_id] = {"scene": "ep1_intro", "step": 0}
-    continue_story(user_id=user_id, chat_id=update.message.chat_id)
+   continue_story(chat_id=update.message.chat_id, user_id=user_id)
 
 def handle_message(update, context):
     user_id = update.message.chat_id
