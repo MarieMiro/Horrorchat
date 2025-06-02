@@ -118,7 +118,7 @@ def handle_message(update, context):
         reply = gpt_reply(scene, step_index, user_input)
    update.message.reply_text(reply)
 
-    continue_story(user_id=user_id, chat_id=update.message.chat_id)
+   continue_story(user_id=user_id, chat_id=update.message.chat_id)
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
