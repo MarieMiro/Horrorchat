@@ -96,6 +96,8 @@ def send_remaining_lines(user_id, chat_id):
     state["line_index"] = 0
 
 def continue_story(user_id, chat_id):
+    if user_id not in user_locks:
+        user_locks[user_id] = threading.Lock()
     def run():
         with user_locks[user_id]:
             send_remaining_lines(user_id, chat_id)
