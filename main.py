@@ -69,32 +69,32 @@ def gpt_reply(scene, step_index, user_input):
         return f"Ошибка GPT: {str(e)}"
 
 def send_remaining_lines(user_id, chat_id):
-    state = get_user_state(user_id)
-    scene = story[state["scene"]]
-    step_index = state["step"]
-    line_index = state["line_index"]
+    def run():
+        state = get_user_state(user_id)
+        scene = story[state["scene"]]
+        steps = scene["steps"]
 
-    if step_index >= len(scene["steps"]):
-        return
+        while state["step"] < len(steps):
+            step = steps[state["step"]]
+            characters = step.get("characters", [])
 
-    step = scene["steps"][step_index]
+            # Текст вступления, если есть
+            if "text" in step and state["line_index"] == 0:
+                bot.send_message(chat_id=chat_id, text=step["text"])
+                time.sleep(7)
 
-    if "text" in step and line_index == 0:
-        bot.send_message(chat_id=chat_id, text=step["text"])
-        time.sleep(7)
+            # Печать реплик персонажей
+            while state["line_index"] < len(characters):
+                line = characters[state["line_index"]]
+                bot.send_message(chat_id=chat_id, text=f'{line["name"]}: {line["line"]}')
+                state["line_index"] += 1
+                time.sleep(7)
 
-    characters = step.get("characters", [])
-    while line_index < len(characters):
-        line = characters[line_index]
-        bot.send_message(chat_id=chat_id, text=f'{line["name"]}: {line["line"]}')
-        line_index += 1
-        state["line_index"] = line_index
-        time.sleep(7)
+            # Переход к следующему шагу
+            state["step"] += 1
+            state["line_index"] = 0
 
-    # Переход к следующему шагу
-    state["step"] += 1
-    state["line_index"] = 0
-
+    threading.Thread(target=run).start()
 def continue_story(user_id, chat_id):
     if user_id not in user_locks:
         user_locks[user_id] = threading.Lock()
@@ -106,7 +106,7 @@ def continue_story(user_id, chat_id):
 def start(update, context):
     user_id = update.message.chat_id
     user_states[user_id] = {"scene": "ep1_intro", "step": 0, "line_index": 0}
-    continue_story(user_id=user_id, chat_id=update.message.chat_id)
+    send_remaining_lines(user_id, update.message.chat_id)
 
 def handle_message(update, context):
     user_id = update.message.chat_id
@@ -119,7 +119,7 @@ def handle_message(update, context):
         reply = gpt_reply(scene, step_index, user_input)
         update.message.reply_text(reply)
 
-    continue_story(user_id=user_id, chat_id=update.message.chat_id)
+    send_remaining_lines(user_id, update.message.chat_id)
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
