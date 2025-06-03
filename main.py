@@ -91,13 +91,15 @@ def send_step_messages(user_id, chat_id):
 
 def continue_story(user_id, chat_id):
     def run():
-        with user_locks[user_id]:
+        lock = user_locks.setdefault(user_id, threading.Lock())
+        with lock:
             send_step_messages(user_id, chat_id)
     threading.Thread(target=run).start()
 
 def start(update, context):
     user_id = update.message.chat_id
     user_states[user_id] = {"scene": "ep1_intro", "step": 0}
+    user_locks[user_id] = threading.Lock()  # <- добавьте эту строку
     continue_story(user_id, update.message.chat_id)
 
 def handle_message(update, context):
