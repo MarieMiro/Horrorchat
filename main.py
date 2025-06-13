@@ -80,7 +80,11 @@ def send_remaining_lines(user_id, chat_id):
 
             # Отправка текста сцены один раз
             if "text" in step and state["line_index"] == 0:
-                bot.send_message(chat_id=chat_id, text=step["text"])
+                 bot.send_message(
+                    chat_id=chat_id,
+                    text=f"_{step['text']}_",  # курсив
+                    parse_mode="Markdown"
+                )
                 time.sleep(7)
                 # Сдвигаем line_index, чтобы не повторить первую реплику
                 state["line_index"] = -1 if not characters else 0
