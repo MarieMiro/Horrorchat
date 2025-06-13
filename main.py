@@ -78,12 +78,17 @@ def send_remaining_lines(user_id, chat_id):
             step = steps[state["step"]]
             characters = step.get("characters", [])
 
-            # Текст вступления, если есть
+            # Отправка текста сцены один раз
             if "text" in step and state["line_index"] == 0:
                 bot.send_message(chat_id=chat_id, text=step["text"])
                 time.sleep(7)
+                # Сдвигаем line_index, чтобы не повторить первую реплику
+                state["line_index"] = -1 if not characters else 0
+                if not characters:
+                    state["step"] += 1
+                    continue
 
-            # Печать реплик персонажей
+            # Отправка реплик
             while state["line_index"] < len(characters):
                 line = characters[state["line_index"]]
                 bot.send_message(chat_id=chat_id, text=f'{line["name"]}: {line["line"]}')
