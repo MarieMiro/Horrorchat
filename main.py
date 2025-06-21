@@ -126,7 +126,7 @@ def handle_message(update, context):
     user_id = update.message.chat_id
     user_input = update.message.text.strip()
 
-state = get_user_state(user_id)
+    state = get_user_state(user_id)
     scene = story[state["scene"]]
     step_index = state["step"]
 
