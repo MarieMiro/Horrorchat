@@ -27,9 +27,9 @@ def get_user_state(user_id):
     return user_states.setdefault(user_id, {
         "scene": "ep1_intro",
         "step": 0,
-        "line_index": 0
+        "line_index": 0,
+        "step_completed": False
     })
-
 def collect_context(scene, step_index):
     context = []
     for i in range(step_index):
@@ -75,13 +75,15 @@ def gpt_reply(scene, step_index, user_input):
 def send_remaining_lines(user_id, chat_id):
     def run():
         state = get_user_state(user_id)
+        if state.get("step_completed"):
+            return  # Этот шаг уже был отправлен
+
         scene = story[state["scene"]]
         steps = scene["steps"]
 
         while state["step"] < len(steps):
             step = steps[state["step"]]
             characters = step.get("characters", [])
-
             delay = step.get("delay", 7)
 
             # Отправка вступительного текста
@@ -94,7 +96,9 @@ def send_remaining_lines(user_id, chat_id):
                 time.sleep(delay)
                 state["line_index"] = -1 if not characters else 0
                 if not characters:
+                    state["step_completed"] = True
                     state["step"] += 1
+                    state["line_index"] = 0
                     continue
 
             # Отправка реплик
@@ -104,10 +108,13 @@ def send_remaining_lines(user_id, chat_id):
                 state["line_index"] += 1
                 time.sleep(delay)
 
+            # Отмечаем шаг завершённым и готовим следующий
+            state["step_completed"] = True
             state["step"] += 1
             state["line_index"] = 0
 
     threading.Thread(target=run).start()
+
 
 def continue_story(user_id, chat_id):
     if user_id not in user_locks:
@@ -134,7 +141,8 @@ def handle_message(update, context):
         reply = gpt_reply(scene, step_index, user_input)
         update.message.reply_text(reply)
 
-    send_remaining_lines(user_id, update.message.chat_id)
+    continue_story(user_id, update.message.chat_id)
+    state["step_completed"] = False
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
