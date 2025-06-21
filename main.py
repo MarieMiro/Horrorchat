@@ -18,7 +18,7 @@ app = Flask(__name__)
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dispatcher = Dispatcher(bot, None, use_context=True)
 
-user_states = {}  # user_id -> {"scene": ..., "step": ..., "line_index": ...}
+user_states = {}
 user_locks = {}
 
 def get_user_state(user_id):
@@ -44,7 +44,10 @@ def gpt_reply(scene, step_index, user_input):
     character_names = [c["name"] for c in characters]
     context_text = collect_context(scene, step_index)
 
-    prompt = f"""
+    # Используем кастомный промпт, если есть
+    prompt = step.get("prompt_hint")
+    if not prompt:
+        prompt = f"""
 Ты — один из следующих персонажей: {', '.join(character_names)}.
 Алекс — главная героиня. Пользователь играет за неё и пишет от её имени.
 
@@ -54,6 +57,7 @@ def gpt_reply(scene, step_index, user_input):
 Ответь очень коротко и естественно от имени одного из этих персонажей. Не описывай действия. Не добавляй ничего лишнего. Не отвечай от имени Алекс. Формат:
 Имя: реплика
 """
+
     try:
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -78,15 +82,16 @@ def send_remaining_lines(user_id, chat_id):
             step = steps[state["step"]]
             characters = step.get("characters", [])
 
-            # Отправка текста сцены один раз
+            delay = step.get("delay", 7)
+
+            # Отправка вступительного текста
             if "text" in step and state["line_index"] == 0:
-                 bot.send_message(
+                bot.send_message(
                     chat_id=chat_id,
-                    text=f"_{step['text']}_",  # курсив
+                    text=f"_{step['text']}_",
                     parse_mode="Markdown"
                 )
-                time.sleep(7)
-                # Сдвигаем line_index, чтобы не повторить первую реплику
+                time.sleep(delay)
                 state["line_index"] = -1 if not characters else 0
                 if not characters:
                     state["step"] += 1
@@ -97,13 +102,13 @@ def send_remaining_lines(user_id, chat_id):
                 line = characters[state["line_index"]]
                 bot.send_message(chat_id=chat_id, text=f'{line["name"]}: {line["line"]}')
                 state["line_index"] += 1
-                time.sleep(7)
+                time.sleep(delay)
 
-            # Переход к следующему шагу
             state["step"] += 1
             state["line_index"] = 0
 
     threading.Thread(target=run).start()
+
 def continue_story(user_id, chat_id):
     if user_id not in user_locks:
         user_locks[user_id] = threading.Lock()
@@ -120,7 +125,8 @@ def start(update, context):
 def handle_message(update, context):
     user_id = update.message.chat_id
     user_input = update.message.text.strip()
-    state = get_user_state(user_id)
+
+state = get_user_state(user_id)
     scene = story[state["scene"]]
     step_index = state["step"]
 
@@ -138,5 +144,7 @@ def webhook():
 
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
+
