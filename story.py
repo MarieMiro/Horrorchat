@@ -192,7 +192,7 @@ story = {
           }
         ],
         "delay": 7
-      }
+      },
         {
         "delay": 7,
         "characters": [
