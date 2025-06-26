@@ -75,6 +75,13 @@ def gpt_reply(scene, step_index, user_input):
 def send_remaining_lines(user_id, chat_id):
     def run():
         state = get_user_state(user_id)
+
+        # Если уже завершили шаг и не было нового пользовательского ввода — не продолжаем
+        if not state.get("step_completed"):
+            return
+        state["step_completed"] = False  # сбрасываем, потому что сейчас будем продолжать
+    def run():
+        state = get_user_state(user_id)
         if state.get("step_completed"):
             return  # Этот шаг уже был отправлен
 
@@ -141,8 +148,11 @@ def handle_message(update, context):
         reply = gpt_reply(scene, step_index, user_input)
         update.message.reply_text(reply)
 
-    continue_story(user_id, update.message.chat_id)
-    state["step_completed"] = False
+        # Отмечаем шаг завершённым, теперь можно идти дальше
+        if not state.get("step_completed"):
+            state["step_completed"] = True
+            send_remaining_lines(user_id, update.message.chat_id)
+
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
