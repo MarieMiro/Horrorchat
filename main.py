@@ -28,7 +28,8 @@ def get_user_state(user_id):
         "scene": "ep1_intro",
         "step": 0,
         "line_index": 0,
-        "step_completed": False
+        "step_completed": True,
+        "paused": False  # <-- добавили
     })
 def collect_context(scene, step_index):
     context = []
@@ -71,19 +72,15 @@ def gpt_reply(scene, step_index, user_input):
         return response.choices[0].message.content.strip()
     except Exception as e:
         return f"Ошибка GPT: {str(e)}"
-
 def send_remaining_lines(user_id, chat_id):
     def run():
         state = get_user_state(user_id)
-
-        # Если уже завершили шаг и не было нового пользовательского ввода — не продолжаем
-        if not state.get("step_completed"):
+        if state.get("paused", False):  # Если пользователь поставил паузу
             return
-        state["step_completed"] = False  # сбрасываем, потому что сейчас будем продолжать
-    def run():
-        state = get_user_state(user_id)
-        if state.get("step_completed"):
-            return  # Этот шаг уже был отправлен
+        if not state.get("step_completed", True):  # Если предыдущий step ещё не завершён
+            return
+
+        state["step_completed"] = False  # Блокируем до завершения step
 
         scene = story[state["scene"]]
         steps = scene["steps"]
@@ -93,7 +90,7 @@ def send_remaining_lines(user_id, chat_id):
             characters = step.get("characters", [])
             delay = step.get("delay", 7)
 
-            # Отправка вступительного текста
+            # Если есть текст, отправим его один раз курсивом
             if "text" in step and state["line_index"] == 0:
                 bot.send_message(
                     chat_id=chat_id,
@@ -103,25 +100,25 @@ def send_remaining_lines(user_id, chat_id):
                 time.sleep(delay)
                 state["line_index"] = -1 if not characters else 0
                 if not characters:
-                    state["step_completed"] = True
-                    state["step"] += 1
-                    state["line_index"] = 0
-                    continue
+                    break  # Переходим к следующему step позже
 
-            # Отправка реплик
+            # Отправляем реплики персонажей
             while state["line_index"] < len(characters):
+                if state.get("paused", False):
+                    return  # если пользователь нажал стоп во время отправки
                 line = characters[state["line_index"]]
                 bot.send_message(chat_id=chat_id, text=f'{line["name"]}: {line["line"]}')
                 state["line_index"] += 1
                 time.sleep(delay)
 
-            # Отмечаем шаг завершённым и готовим следующий
-            state["step_completed"] = True
+            # Переход к следующему шагу
             state["step"] += 1
             state["line_index"] = 0
+            break  # Завершаем после одного шага
+
+        state["step_completed"] = True  # Разрешаем следующий шаг
 
     threading.Thread(target=run).start()
-
 
 def continue_story(user_id, chat_id):
     if user_id not in user_locks:
@@ -135,6 +132,19 @@ def start(update, context):
     user_id = update.message.chat_id
     user_states[user_id] = {"scene": "ep1_intro", "step": 0, "line_index": 0}
     send_remaining_lines(user_id, update.message.chat_id)
+def stop(update, context):
+    user_id = update.message.chat_id
+    state = get_user_state(user_id)
+    state["paused"] = True
+    update.message.reply_text("⏸️ История приостановлена. Напиши /continue, чтобы продолжить.")
+
+def continue_command(update, context):
+    user_id = update.message.chat_id
+    state = get_user_state(user_id)
+    state["paused"] = False
+    update.message.reply_text("▶️ Продолжаем...")
+    continue_story(user_id, update.message.chat_id)
+
 
 def handle_message(update, context):
     user_id = update.message.chat_id
@@ -162,6 +172,8 @@ def webhook():
 
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
+dispatcher.add_handler(CommandHandler("stop", stop))
+dispatcher.add_handler(CommandHandler("continue", continue_command))
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
