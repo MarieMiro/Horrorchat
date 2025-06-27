@@ -158,10 +158,17 @@ def handle_message(update, context):
         reply = gpt_reply(scene, step_index, user_input)
         update.message.reply_text(reply)
 
-        # Отмечаем шаг завершённым, теперь можно идти дальше
+        # Отмечаем шаг завершённым
         if not state.get("step_completed"):
             state["step_completed"] = True
-            send_remaining_lines(user_id, update.message.chat_id)
+
+        # ⏱️ Подождать 7 секунд перед автоматическим продолжением
+        def delayed_continue():
+            if not state.get("paused", False):
+                send_remaining_lines(user_id, update.message.chat_id)
+
+        # Запускаем отложенный запуск через 7 секунд
+        threading.Timer(7.0, delayed_continue).start()
 
 
 @app.route("/webhook", methods=["POST"])
