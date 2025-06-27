@@ -149,8 +149,13 @@ def continue_command(update, context):
 def handle_message(update, context):
     user_id = update.message.chat_id
     user_input = update.message.text.strip()
-
     state = get_user_state(user_id)
+
+    # Отменяем отложенное продолжение, если оно уже запущено
+    if "continue_timer" in state and state["continue_timer"]:
+        state["continue_timer"].cancel()
+        state["continue_timer"] = None
+
     scene = story[state["scene"]]
     step_index = state["step"]
 
@@ -158,18 +163,19 @@ def handle_message(update, context):
         reply = gpt_reply(scene, step_index, user_input)
         update.message.reply_text(reply)
 
-        # Отмечаем шаг завершённым
+        # Завершаем шаг (если нужно)
         if not state.get("step_completed"):
             state["step_completed"] = True
 
-        # ⏱️ Подождать 7 секунд перед автоматическим продолжением
+        # ⏳ Устанавливаем отложенное продолжение через 10 секунд
         def delayed_continue():
             if not state.get("paused", False):
                 send_remaining_lines(user_id, update.message.chat_id)
+            state["continue_timer"] = None  # сбросить флаг
 
-        # Запускаем отложенный запуск через 7 секунд
-        threading.Timer(7.0, delayed_continue).start()
-
+        timer = threading.Timer(10.0, delayed_continue)
+        state["continue_timer"] = timer
+        timer.start()
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
